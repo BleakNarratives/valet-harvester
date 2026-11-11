@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Rotate provider credentials when a child hits a rate limit."""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def fail(message, code=1):
+    print(f"valet-rotate: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def load_vault(path):
+    if not path.is_file():
+        fail(f"vault missing: {path}", 1)
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read vault {path}: {exc}")
+    entries = {}
+    if isinstance(data, dict) and isinstance(data.get("keys"), list):
+        for entry in data["keys"]:
+            if not isinstance(entry, dict):
+                continue
+            token = entry.get("token")
+            name = entry.get("name") or entry.get("provider")
+            provider = entry.get("provider") or name
+            if name and token:
+                entries[name] = token
+            if provider and token:
+                entries[provider] = token
+    elif isinstance(data, dict):
+        for name, value in data.items():
+            if isinstance(value, dict) and value.get("token"):
+                entries[name] = value["token"]
+    return entries
+
+
+def env_names(provider):
+    slug = provider.strip().upper().replace("-", "_").replace(".", "_")
+    names = [f"{slug}_API_KEY", "API_KEY"]
+    if provider == "gemini":
+        names = ["GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY",
+                 "API_KEY"]
+    elif provider == "mistral":
+        names = ["MISTRAL_API_KEY", "API_KEY"]
+    return names
+
+
+def run_child(command, env):
+    stderr_lines = []
+    try:
+        process = subprocess.Popen(
+            command,
+            env=env,
+            stdout=None,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+        )
+    except FileNotFoundError as exc:
+        fail(f"command not found: {exc.filename}", 127)
+    except OSError as exc:
+        fail(f"could not start child: {exc}")
+
+    assert process.stderr is not None
+    for line in process.stderr:
+        sys.stderr.write(line)
+        sys.stderr.flush()
+        stderr_lines.append(line)
+        if len(stderr_lines) > 50:
+            del stderr_lines[0]
+    return_code = process.wait()
+    rate_limited = (
+        return_code == 2
+        or any("429" in line for line in stderr_lines[-50:])
+    )
+    return return_code, rate_limited
+
+
+def main(argv):
+    if len(argv) < 2:
+        print(
+            "usage: valet-rotate <provider1,provider2,...> "
+            "<command...>",
+            file=sys.stderr,
+        )
+        return 2
+
+    providers = [part.strip() for part in argv[0].split(",") if part.strip()]
+    command = argv[1:]
+    if not providers or not command:
+        print("provider list and command are required", file=sys.stderr)
+        return 2
+
+    vault_path = Path(
+        os.environ.get("VALET_VAULT", str(Path.home() / ".concierge" / "vault.json"))
+    )
+    entries = load_vault(vault_path)
+
+    tried = []
+    last_code = 1
+    for provider in providers:
+        tried.append(provider)
+        token = entries.get(provider)
+        if not token:
+            print(
+                f"valet-rotate: no key for {provider}",
+                file=sys.stderr,
+            )
+            continue
+        env = os.environ.copy()
+        for name in env_names(provider):
+            env[name] = token
+        return_code, rate_limited = run_child(command, env)
+        if not rate_limited:
+            return return_code
+        last_code = return_code
+        print(
+            f"valet-rotate: rate limit on {provider}, trying next",
+            file=sys.stderr,
+        )
+
+    print(
+        "valet-rotate: all providers failed: " + ", ".join(tried),
+        file=sys.stderr,
+    )
+    return last_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
