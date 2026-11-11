@@ -112,7 +112,6 @@ class RotateTests(unittest.TestCase):
             text=True,
             env=self._env(),
         )
-        self.assertEqual(proc.returncode, 0 if False else 1)
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("all providers failed", proc.stderr)
         self.assertIn("provider1, provider2", proc.stderr)

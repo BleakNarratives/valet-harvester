@@ -213,11 +213,6 @@ def _parse_args(argv):
         type=float,
         default=TIMEOUT_SECONDS,
     )
-    parser.add_argument(
-        "--cerebras",
-        dest="cerebras_token",
-        help="Ignored compatibility option.",
-    )
     args = parser.parse_args(argv)
     provider = args.provider or args.provider_option
     token = args.token or args.token_option
