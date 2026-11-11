@@ -78,8 +78,11 @@ def candidate_files(root):
     """Yield text files under root without following links."""
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         for filename in filenames:
-            if Path(filename).suffix.lower() in TEXT_SUFFIXES:
-                yield Path(dirpath) / filename
+            path = Path(dirpath) / filename
+            if path.is_symlink():
+                continue
+            if path.suffix.lower() in TEXT_SUFFIXES:
+                yield path
 
 
 def redact(token):
@@ -169,6 +172,9 @@ def scan():
                 f"{report_status} {provider} {redact(token)} "
                 f"{source_text}{code_text}\n"
             )
+
+    os.chmod(vault_path, 0o600)
+    os.chmod(report_path, 0o600)
 
     working_count = sum(
         1 for row in report_rows if row[0] == "WORKING"
