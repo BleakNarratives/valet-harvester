@@ -21,6 +21,8 @@ class ScanTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.old_cwd = os.getcwd()
         self.old_env = os.environ.get("HARVEST_DIRS")
+        self.old_default_dirs = list(scan.DEFAULT_DIRS)
+        scan.DEFAULT_DIRS = []
         os.chdir(self.root)
         harvest = self.root / "harvest"
         harvest.mkdir()
@@ -32,6 +34,7 @@ class ScanTests(unittest.TestCase):
 
     def tearDown(self):
         os.chdir(self.old_cwd)
+        scan.DEFAULT_DIRS = self.old_default_dirs
         if self.old_env is None:
             os.environ.pop("HARVEST_DIRS", None)
         else:
