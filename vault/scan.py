@@ -60,10 +60,11 @@ def _verify_key(provider, token):
 
 def harvest_dirs():
     """Return configured harvest directories, preserving order."""
-    dirs = [os.path.expanduser(path) for path in DEFAULT_DIRS]
     extra = os.environ.get("HARVEST_DIRS", "")
-    if extra:
-        dirs.extend(part for part in extra.split(":") if part)
+    if extra.strip():
+        dirs = [part for part in extra.split(":") if part.strip()]
+    else:
+        dirs = [os.path.expanduser(path) for path in DEFAULT_DIRS]
     seen = set()
     result = []
     for path in dirs:
