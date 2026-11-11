@@ -42,11 +42,7 @@ class KeyResult(tuple):
             if key not in mapping:
                 raise KeyError(key)
             return mapping[key]
-        if key == 0:
-            return super().__getitem__(0)
-        if key == 1:
-            return super().__getitem__(1)
-        raise IndexError("KeyResult index out of range")
+        return super().__getitem__(key)
 
     def __eq__(self, other):
         if isinstance(other, KeyResult):
