@@ -85,6 +85,42 @@ def candidate_files(root):
                 yield path
 
 
+def _write_text_atomic(path, text):
+    """Write text with restrictive permissions and an atomic rename."""
+    import tempfile
+
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        dir=str(path.parent),
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, 0o600)
+        os.replace(temp_path, path)
+        try:
+            directory = os.open(
+                str(path.parent),
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except OSError:
+            pass
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def redact(token):
     if len(token) <= 12:
         return "***"
@@ -155,26 +191,29 @@ def scan():
                 "sources": sources,
             })
 
-    vault_path = Path("vault.v3.json")
-    with vault_path.open("w", encoding="utf-8") as handle:
-        json.dump({"version": 3, "keys": vault_keys}, handle, indent=2)
-        handle.write("\n")
+    vault_path = Path(
+        os.environ.get("VAULT_OUTPUT", "vault.v3.json")
+    ).expanduser()
+    vault_text = json.dumps(
+        {"version": 3, "keys": vault_keys}, indent=2
+    ) + "\n"
+    _write_text_atomic(vault_path, vault_text)
 
-    report_path = Path("harvest_report.txt")
-    with report_path.open("w", encoding="utf-8") as handle:
-        for status, provider, token, sources, code in report_rows:
-            report_status = "OK" if status == "WORKING" else status
-            source_text = ", ".join(
-                f"{source['path']}:{source['line']}" for source in sources
-            )
-            code_text = "" if code is None else f" ({code})"
-            handle.write(
-                f"{report_status} {provider} {redact(token)} "
-                f"{source_text}{code_text}\n"
-            )
-
-    os.chmod(vault_path, 0o600)
-    os.chmod(report_path, 0o600)
+    report_path = Path(
+        os.environ.get("REPORT_OUTPUT", "harvest_report.txt")
+    ).expanduser()
+    report_text = ""
+    for status, provider, token, sources, code in report_rows:
+        report_status = "OK" if status == "WORKING" else status
+        source_text = ", ".join(
+            f"{source['path']}:{source['line']}" for source in sources
+        )
+        code_text = "" if code is None else f" ({code})"
+        report_text += (
+            f"{report_status} {provider} {redact(token)} "
+            f"{source_text}{code_text}\n"
+        )
+    _write_text_atomic(report_path, report_text)
 
     working_count = sum(
         1 for row in report_rows if row[0] == "WORKING"

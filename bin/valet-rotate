@@ -13,6 +13,28 @@ def fail(message, code=1):
     raise SystemExit(code)
 
 
+def _valid_vault_entry(entry):
+    if not isinstance(entry, dict):
+        return None
+    token = entry.get("token")
+    if not isinstance(token, str) or not token:
+        return None
+    name = entry.get("name")
+    if not isinstance(name, str) or not name:
+        name = entry.get("provider")
+    provider = entry.get("provider")
+    if not isinstance(provider, str) or not provider:
+        provider = name
+    if not isinstance(name, str) or not name:
+        return None
+    if provider is not None and not isinstance(provider, str):
+        return None
+    sources = entry.get("sources")
+    if sources is not None and not isinstance(sources, list):
+        return None
+    return name, (provider or name), token
+
+
 def load_vault(path):
     if not path.is_file():
         fail(f"vault missing: {path}", 1)
@@ -21,22 +43,26 @@ def load_vault(path):
             data = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
         fail(f"cannot read vault {path}: {exc}")
+
     entries = {}
     if isinstance(data, dict) and isinstance(data.get("keys"), list):
         for entry in data["keys"]:
-            if not isinstance(entry, dict):
+            parsed = _valid_vault_entry(entry)
+            if parsed is None:
                 continue
-            token = entry.get("token")
-            name = entry.get("name") or entry.get("provider")
-            provider = entry.get("provider") or name
-            if name and token:
-                entries[name] = token
-            if provider and token:
+            name, provider, token = parsed
+            entries[name] = token
+            if provider:
                 entries[provider] = token
     elif isinstance(data, dict):
         for name, value in data.items():
-            if isinstance(value, dict) and value.get("token"):
-                entries[name] = value["token"]
+            if not isinstance(name, str) or not name:
+                continue
+            if not isinstance(value, dict):
+                continue
+            token = value.get("token")
+            if isinstance(token, str) and token:
+                entries[name] = token
     return entries
 
 
@@ -94,7 +120,10 @@ def main(argv):
     providers = [part.strip() for part in argv[0].split(",") if part.strip()]
     command = argv[1:]
     if not providers or not command:
-        print("provider list and command are required", file=sys.stderr)
+        print(
+            "provider list and command are required",
+            file=sys.stderr,
+        )
         return 2
 
     vault_path = Path(

@@ -9,3 +9,6 @@ Harvest API keys from hand-authored notes, store one vault, and inject keys into
 5. Rotate providers with `bin/valet-rotate <provider1,provider2,...> <command...>`.
 
 Security: generated vault and report files are mode 0600 and gitignored. Never commit them.
+
+Optional: set `VAULT_OUTPUT` and `REPORT_OUTPUT` to store generated
+files outside the repository, such as under `$HOME/.concierge`.

@@ -2,6 +2,9 @@
 
 ## Built
 
+- Atomic vault/report writes with fsync and mode 0600.
+- Stricter vault JSON validation in `bin/valet-rotate`.
+- Optional `VAULT_OUTPUT` and `REPORT_OUTPUT` paths.
 - Security hardening: generated vault/report files use mode 0600,
   symlinked harvest files are ignored, and generated secret files are
   gitignored.
