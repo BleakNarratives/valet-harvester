@@ -46,13 +46,14 @@ except ImportError:  # pragma: no cover - direct script execution
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import test_keys
 
+_ORIGINAL_TEST_KEY = test_keys.test_key
 test_key = test_keys.test_key
 
 
 def _verify_key(provider, token):
     """Use a patched scan-level tester when one is present."""
     current = globals().get("test_key")
-    if callable(current) and current is not test_keys.test_key:
+    if callable(current) and current is not _ORIGINAL_TEST_KEY:
         return current(provider, token)
     return test_keys.test_key(provider, token)
 
